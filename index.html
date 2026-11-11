@@ -84,7 +84,7 @@
   .st .sets{font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px}
   .st .t{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px;flex:none}
   .between{font-size:12.5px;color:var(--muted);padding:0 14px 0 54px}
-  .between.water{color:#67e8f9}
+  .between.water{color:#67e8f9} .between.break{color:#c4b5fd}
 
   /* editor */
   .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px}
@@ -136,6 +136,7 @@
   .setrow input{padding:9px 4px}
   .setrow .sl{text-align:center;color:var(--muted)}
   .setrow input.na{opacity:.4}
+  .setrow .lbl{grid-column:2 / 5;text-align:left;padding:7px 10px;font-size:15px;margin-top:-2px}
   .sethead{display:grid;grid-template-columns:52px 1fr 14px 1fr 36px;gap:8px;font-size:12px;color:var(--muted);font-weight:650;text-transform:uppercase;letter-spacing:.06em}
   .sethead span:nth-child(2),.sethead span:nth-child(4){text-align:center}
   .pat{display:flex;align-items:center;gap:10px;padding:12px 14px}
@@ -148,7 +149,7 @@
   /* run */
   #run{transition:background-color .25s;background:var(--prep);padding:calc(env(safe-area-inset-top) + 12px) 20px calc(env(safe-area-inset-bottom) + 12px)}
   #run.work{background:var(--work)} #run.rest{background:var(--rest)} #run.transition{background:var(--move)}
-  #run.prep{background:var(--prep)} #run.water{background:var(--water)}
+  #run.prep{background:var(--prep)} #run.water{background:var(--water)} #run.break{background:#7c3aed}
   .topbar{display:flex;align-items:center;gap:10px}
   .overall{flex:1}
   .bar{height:6px;border-radius:3px;background:rgba(0,0,0,.25);overflow:hidden}
@@ -270,7 +271,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const MIN_WORK = 5;
 const $ = id => document.getElementById(id);
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -320,7 +321,7 @@ function seedData() {
 }
 function normSets(a) {
   if (!Array.isArray(a)) return null;
-  const s = a.slice(0, 30).map(x => ({ work: clampWork(x && x.work), rest: clampRest(x && x.rest) }));
+  const s = a.slice(0, 30).map(x => { const o = { work: clampWork(x && x.work), rest: clampRest(x && x.rest) }; const l = String((x && x.label) || '').trim().slice(0, 40); if (l) o.label = l; return o; });
   return s.length ? s : null;
 }
 function normWorkout(w) {
@@ -333,11 +334,12 @@ function normWorkout(w) {
     transitionSeconds: clampRest(w.transitionSeconds ?? 15),
     waterBreak: wb,
     defaultPattern: normSets(w.defaultPattern) || even(3, 40, 20),
-    stations: (Array.isArray(w.stations) ? w.stations : []).slice(0, 40).map(s => ({
+    stations: (Array.isArray(w.stations) ? w.stations : []).slice(0, 60).map(s => ({
       id: typeof s.id === 'string' && s.id ? s.id : uid(),
       name: String((s && s.name) || 'Station').slice(0, 40),
       note: String((s && s.note) || '').slice(0, 80),
       sets: normSets(s && s.sets),
+      breakAfter: clampRest(s && s.breakAfter),
     })),
   };
 }
@@ -385,12 +387,13 @@ function buildTimeline(w) {
     sets.forEach((set, k) => {
       const lastSet = k === sets.length - 1;
       const rest = lastSet ? 0 : set.rest;
-      tl.push({type:'work', dur:Math.max(MIN_WORK, set.work), st:si, set:k, sets:sets.length, restAfter:rest});
+      tl.push({type:'work', dur:Math.max(MIN_WORK, set.work), st:si, set:k, sets:sets.length, restAfter:rest, label:set.label || ''});
       if (rest > 0) tl.push({type:'rest', dur:rest, st:si, set:k, sets:sets.length});
     });
     if (!lastStation) {
       const water = w.waterBreak && w.waterBreak.afterStation === si + 1 && w.waterBreak.seconds > 0;
       if (water) tl.push({type:'water', dur:w.waterBreak.seconds, st:si + 1});
+      else if (s.breakAfter > 0) tl.push({type:'break', dur:s.breakAfter, st:si + 1});
       else if (w.transitionSeconds > 0) tl.push({type:'transition', dur:w.transitionSeconds, st:si + 1});
     }
   });
@@ -401,6 +404,7 @@ function buildTimeline(w) {
 }
 const totalOf = w => w.stations.length ? buildTimeline(w).total : 0;
 const setsTime = sets => sets.reduce((a, s, k) => a + s.work + (k < sets.length - 1 ? s.rest : 0), 0);
+const labelsOf = sets => [...new Set(sets.map(x => x.label).filter(Boolean))].join(' / ');
 const setsSummary = sets => sets.map((s, k) => k === sets.length - 1 ? `${s.work}` : `${s.work}/${s.rest}`).join(' · ');
 
 /* =========================================================
@@ -478,10 +482,10 @@ function openPreview(id) {
   w.stations.forEach((s, si) => {
     const sets = setsOf(w, s);
     html += `<div class="st"><div class="n">${si + 1}</div><div class="body"><div class="name">${esc(s.name)}</div>
-      <div class="sets">${esc(setsSummary(sets))}${s.sets ? '' : ' (default)'}${s.note ? ' · ' + esc(s.note) : ''}</div></div>
+      <div class="sets">${esc(setsSummary(sets))}${s.sets ? '' : ' (default)'}${s.note ? ' · ' + esc(s.note) : ''}</div>${labelsOf(sets) ? `<div class="sets">${esc(labelsOf(sets))}</div>` : ''}</div>
       <div class="t">${fmt(setsTime(sets))}</div></div>`;
-    const gap = t.find(p => (p.type === 'transition' || p.type === 'water') && p.st === si + 1);
-    if (gap) html += `<div class="between${gap.type === 'water' ? ' water' : ''}">↓ ${gap.type === 'water' ? 'water break' : 'move'} ${gap.dur}s</div>`;
+    const gap = t.find(p => (p.type === 'transition' || p.type === 'water' || p.type === 'break') && p.st === si + 1);
+    if (gap) html += `<div class="between ${gap.type}">↓ ${({water:'water break', break:'break', transition:'move'})[gap.type]} ${gap.dur}s</div>`;
   });
   html += `</div>`;
   if (!w.stations.length) html += `<div class="empty">No stations yet — tap <b>Edit</b> to add some.</div>`;
@@ -512,7 +516,7 @@ function renderEditor() {
     const sets = setsOf(w, s);
     html += `<div class="strow" data-sid="${s.id}"><div class="n">${i + 1}</div>
       <div class="body"><input class="stname" value="${esc(s.name)}" placeholder="Station name">
-        <button class="setsbtn" data-act="sheet-station"><span>${esc(setsSummary(sets))}</span><span class="${s.sets ? 'ov' : ''}">${s.sets ? 'custom' : 'default'} ›</span></button></div>
+        <button class="setsbtn" data-act="sheet-station"><span>${esc(setsSummary(sets))}</span><span class="${s.sets ? 'ov' : ''}">${s.breakAfter && i < n - 1 ? `+${s.breakAfter}s break · ` : ''}${s.sets ? 'custom' : 'default'} ›</span></button></div>
       <div class="side"><button class="mini" data-act="st-up" ${i === 0 ? 'disabled' : ''}>▲</button>
         <button class="mini" data-act="st-down" ${i === n - 1 ? 'disabled' : ''}>▼</button>
         <button class="mini" data-act="st-del">✕</button></div></div>`;
@@ -601,7 +605,9 @@ function renderSheet() {
     html += `<span class="fl">Note (optional)</span><input id="shNote" value="${esc(t.s.note)}" placeholder="e.g. 16kg bell" style="margin-bottom:10px">
       <div class="card row" style="margin-bottom:6px"><div><label>${t.custom ? 'Custom sets' : 'Using workout default'}</label>
       <small>${t.custom ? 'This station has its own sets' : 'Edit or build below to customise'}</small></div>
-      ${t.custom ? `<button class="btn" data-act="sh-reset">Use default</button>` : ''}</div>`;
+      ${t.custom ? `<button class="btn" data-act="sh-reset">Use default</button>` : ''}</div>
+      <div class="card row" style="margin-bottom:6px"><div><label>Break after station</label><small>0 = normal move (${t.w.transitionSeconds}s)</small></div>
+      <div class="stepper" data-field="breakAfter" data-step="15"><button data-act="brk-dec">−</button><input type="number" inputmode="numeric" id="shBreak" value="${t.s.breakAfter || 0}"><button data-act="brk-inc">+</button></div></div>`;
   }
   html += `<div class="tabs">${['even','drop','pyramid','saved'].map(k => `<button data-act="sh-tab" data-tab="${k}" class="${bf.tab === k ? 'on' : ''}">${k[0].toUpperCase() + k.slice(1)}</button>`).join('')}</div>`;
   if (bf.tab === 'saved') {
@@ -637,7 +643,8 @@ function renderSheet() {
     html += `<div class="setrow" data-k="${k}"><span class="k">${k + 1}</span>
       <input type="number" inputmode="numeric" data-set="work" value="${s.work}"><span class="sl">/</span>
       <input type="number" inputmode="numeric" data-set="rest" value="${s.rest}" class="${last ? 'na' : ''}">
-      <button class="mini" data-act="set-del" ${t.sets.length === 1 ? 'disabled' : ''}>✕</button></div>`;
+      <button class="mini" data-act="set-del" ${t.sets.length === 1 ? 'disabled' : ''}>✕</button>
+      <input class="lbl" data-set="label" value="${esc(s.label || '')}" placeholder="Exercise for this set (optional)"></div>`;
   });
   html += `<button class="btn full" data-act="set-add" style="margin:8px 0 4px">+ Add set</button></div>
     <div class="note">The last set's rest is replaced by the move to the next station. Work never goes below 5s.</div>
@@ -777,7 +784,7 @@ function enterPhase(sound = true) {
   if (sound && !paused) {
     if (p.type === 'work') SFX.work();
     else if (p.type === 'rest') SFX.rest();
-    else if (p.type === 'transition' || p.type === 'water') SFX.move();
+    else if (p.type === 'transition' || p.type === 'water' || p.type === 'break') SFX.move();
   }
   renderStatic(); render();
 }
@@ -848,7 +855,7 @@ function finish(early) {
   show('finish');
 }
 
-const LABEL = { prep:'GET READY', work:'WORK', rest:'REST', transition:'MOVE', water:'WATER BREAK' };
+const LABEL = { prep:'GET READY', work:'WORK', rest:'REST', transition:'MOVE', water:'WATER BREAK', break:'BREAK' };
 const fmtCount = s => s >= 60 ? fmt(s) : String(s);
 function nextText(i) {
   const c = tl[i], n = tl[i + 1];
@@ -856,9 +863,11 @@ function nextText(i) {
   if (n.type === 'rest') return `Next: rest ${n.dur}s`;
   if (n.type === 'transition') return `Next station: ${W.stations[n.st].name}`;
   if (n.type === 'water') return `Next: water break · then ${W.stations[n.st].name}`;
+  if (n.type === 'break') return `Next: ${n.dur}s break · then ${W.stations[n.st].name}`;
   if (n.type === 'work') {
     const pair = n.restAfter ? `${n.dur} / ${n.restAfter}` : `${n.dur}s`;
-    return c.type === 'rest' ? `Next: set ${n.set + 1} · ${pair}` : `First set: ${pair}`;
+    const lbl = n.label ? `${n.label} · ` : '';
+    return c.type === 'rest' ? `Next: ${lbl}${pair}` : `First: ${lbl}${pair}`;
   }
   return '';
 }
@@ -866,9 +875,13 @@ function renderStatic() {
   const p = tl[idx], st = W.stations[p.st];
   $('run').className = 'screen active ' + p.type + (paused ? ' paused' : '');
   $('phase').textContent = LABEL[p.type];
-  const upcoming = p.type === 'prep' || p.type === 'transition' || p.type === 'water';
-  $('station').textContent = upcoming ? `Up: ${st.name}` : st.name;
-  $('setof').textContent = (p.type === 'work' || p.type === 'rest') ? `Set ${p.set + 1} of ${p.sets}` + (st.note ? ` · ${st.note}` : '') : (st.note || ' ');
+  const upcoming = p.type === 'prep' || p.type === 'transition' || p.type === 'water' || p.type === 'break';
+  const named = p.type === 'work' && p.label;
+  $('station').textContent = upcoming ? `Up: ${st.name}` : (named ? p.label : st.name);
+  const setInfo = `Set ${p.set + 1} of ${p.sets}`;
+  $('setof').textContent = (p.type === 'work' || p.type === 'rest')
+    ? (named ? `${st.name} · ${setInfo}` : setInfo) + (st.note ? ` · ${st.note}` : '')
+    : (st.note || ' ');
   $('stationOf').textContent = `Station ${p.st + 1} of ${W.stations.length}`;
   $('next').textContent = nextText(idx);
   $('ppBtn').setAttribute('aria-label', paused ? 'Resume' : 'Pause');
@@ -951,7 +964,8 @@ document.addEventListener('click', e => {
     case 'sheet-close': closeSheet(); break;
     case 'sh-tab': bf.tab = b.dataset.tab; renderSheet(); break;
     case 'sh-mode': { const pre = b.closest('.seg').dataset.mode; bf[pre + 'Mode'] = b.dataset.v; renderSheet(); break; }
-    case 'sh-apply': writeSets(builderResult().sets); toast('Sets updated'); break;
+    case 'sh-apply': { const old = sheetTarget().sets; writeSets(builderResult().sets.map((x, i) => old[i] && old[i].label ? { ...x, label: old[i].label } : x)); toast('Sets updated'); break; }
+    case 'brk-inc': case 'brk-dec': { const s = edW().stations.find(x => x.id === sheet.sid); s.breakAfter = clampRest((s.breakAfter || 0) + (act === 'brk-inc' ? 15 : -15)); save(); updateEdTotal(); renderSheet(); break; }
     case 'sh-reset': { const w = edW(); w.stations.find(x => x.id === sheet.sid).sets = null; save(); updateEdTotal(); renderSheet(); break; }
     case 'set-add': { const t = sheetTarget(); const last = t.sets[t.sets.length - 1] || { work: 40, rest: 20 }; writeSets([...t.sets, { ...last }]); break; }
     case 'set-del': { const t = sheetTarget(); const k = int(setrow.dataset.k); writeSets(t.sets.filter((_, i) => i !== k)); break; }
@@ -983,10 +997,12 @@ document.addEventListener('change', e => {
   if (t.classList.contains('stname')) { const s = edW().stations.find(x => x.id === t.closest('.strow').dataset.sid); s.name = (t.value.trim() || 'Station').slice(0, 40); save(); return; }
   if (t.dataset.num) { setField(t.dataset.num, t.value); return; }
   if (t.id === 'waterAfter') { edW().waterBreak.afterStation = int(t.value, 1); changed(); return; }
+  if (t.id === 'shBreak') { edW().stations.find(x => x.id === sheet.sid).breakAfter = clampRest(t.value); save(); updateEdTotal(); renderSheet(); return; }
   if (t.id === 'shNote') { edW().stations.find(x => x.id === sheet.sid).note = t.value.trim().slice(0, 80); save(); return; }
   if (t.dataset.set) {
     const st = sheetTarget(), k = int(t.closest('.setrow').dataset.k), sets = clone(st.sets);
-    sets[k][t.dataset.set] = t.dataset.set === 'work' ? clampWork(t.value) : clampRest(t.value);
+    if (t.dataset.set === 'label') { const l = t.value.trim().slice(0, 40); if (l) sets[k].label = l; else delete sets[k].label; }
+    else sets[k][t.dataset.set] = t.dataset.set === 'work' ? clampWork(t.value) : clampRest(t.value);
     if (t.dataset.set === 'work' && int(t.value) < MIN_WORK) toast('Work can\'t go below 5s');
     writeSets(sets); return;
   }
