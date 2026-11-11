@@ -271,7 +271,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const MIN_WORK = 5;
 const $ = id => document.getElementById(id);
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -321,7 +321,7 @@ function seedData() {
 }
 function normSets(a) {
   if (!Array.isArray(a)) return null;
-  const s = a.slice(0, 30).map(x => { const o = { work: clampWork(x && x.work), rest: clampRest(x && x.rest) }; const l = String((x && x.label) || '').trim().slice(0, 40); if (l) o.label = l; return o; });
+  const s = a.slice(0, 30).map(x => { const o = { work: clampWork(x && x.work), rest: clampRest(x && x.rest) }; const l = String((x && x.label) || '').trim().slice(0, 40); if (l) o.label = l; const c = String((x && x.cue) || '').trim().slice(0, 120); if (c) o.cue = c; return o; });
   return s.length ? s : null;
 }
 function normWorkout(w) {
@@ -337,7 +337,7 @@ function normWorkout(w) {
     stations: (Array.isArray(w.stations) ? w.stations : []).slice(0, 60).map(s => ({
       id: typeof s.id === 'string' && s.id ? s.id : uid(),
       name: String((s && s.name) || 'Station').slice(0, 40),
-      note: String((s && s.note) || '').slice(0, 80),
+      note: String((s && s.note) || '').slice(0, 120),
       sets: normSets(s && s.sets),
       breakAfter: clampRest(s && s.breakAfter),
     })),
@@ -387,7 +387,7 @@ function buildTimeline(w) {
     sets.forEach((set, k) => {
       const lastSet = k === sets.length - 1;
       const rest = lastSet ? 0 : set.rest;
-      tl.push({type:'work', dur:Math.max(MIN_WORK, set.work), st:si, set:k, sets:sets.length, restAfter:rest, label:set.label || ''});
+      tl.push({type:'work', dur:Math.max(MIN_WORK, set.work), st:si, set:k, sets:sets.length, restAfter:rest, label:set.label || '', cue:set.cue || ''});
       if (rest > 0) tl.push({type:'rest', dur:rest, st:si, set:k, sets:sets.length});
     });
     if (!lastStation) {
@@ -562,7 +562,7 @@ function sheetTarget() {
   return { w, s, sets: setsOf(w, s), custom: !!s.sets };
 }
 function writeSets(sets) {
-  const w = edW(); const clean = sets.map(x => ({ work: clampWork(x.work), rest: clampRest(x.rest) }));
+  const w = edW(); const clean = normSets(sets) || [];
   if (!clean.length) return toast('Keep at least one set');
   if (sheet.kind === 'default') w.defaultPattern = clean;
   else w.stations.find(x => x.id === sheet.sid).sets = clean;
@@ -879,9 +879,11 @@ function renderStatic() {
   const named = p.type === 'work' && p.label;
   $('station').textContent = upcoming ? `Up: ${st.name}` : (named ? p.label : st.name);
   const setInfo = `Set ${p.set + 1} of ${p.sets}`;
-  $('setof').textContent = (p.type === 'work' || p.type === 'rest')
-    ? (named ? `${st.name} · ${setInfo}` : setInfo) + (st.note ? ` · ${st.note}` : '')
-    : (st.note || ' ');
+  const nx = tl[idx + 1];
+  const cue = p.type === 'work' ? (p.cue || st.note)
+    : p.type === 'rest' ? ((nx && nx.type === 'work' && (nx.cue || (nx.label ? '' : st.note))) || st.note)
+    : ((tl.find((q, i) => i > idx && q.type === 'work') || {}).cue || st.note);
+  $('setof').textContent = (p.type === 'work' || p.type === 'rest') ? setInfo + (cue ? ` · ${cue}` : '') : (cue || '\u00a0');
   $('stationOf').textContent = `Station ${p.st + 1} of ${W.stations.length}`;
   $('next').textContent = nextText(idx);
   $('ppBtn').setAttribute('aria-label', paused ? 'Resume' : 'Pause');
