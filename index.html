@@ -109,7 +109,7 @@
   .switch.on::after{transform:translateX(20px)}
   select{width:auto;padding:8px 10px}
   .seg{display:flex;background:var(--line);border-radius:9px;padding:2px;flex:none}
-  .seg button{padding:7px 10px;border-radius:7px;font-size:13.5px;font-weight:650;color:var(--muted)}
+  .seg button{padding:7px 9px;border-radius:7px;font-size:13.5px;font-weight:650;color:var(--muted)}
   .seg button.on{background:#3a3a48;color:var(--text)}
   .edtotal{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--muted)}
   .edtotal b{color:var(--text)}
@@ -271,7 +271,7 @@
 
 <script>
 'use strict';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 const MIN_WORK = 5;
 const $ = id => document.getElementById(id);
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -658,14 +658,15 @@ const AUDIO_HINT = {
   ambient: 'Plays over music. Muted by the silent switch.',
   transient: 'Briefly lowers music for each cue.',
   playback: 'Ignores silent switch; may pause music.',
+  'play-and-record': 'Experimental: may play on Silent without pausing music.',
 };
 function renderSettings() {
   $('setBody').innerHTML = `
   <div class="group"><span class="eyebrow">Sound</span></div>
   <div class="card">
     <div class="row"><div><label>Halfway beep</label><small>On work sets of 30s or more</small></div><button class="switch ${opts.halfway ? 'on' : ''}" data-act="opt-half"></button></div>
-    <div class="row"><div><label>With music</label><small>${navigator.audioSession ? AUDIO_HINT[opts.audio] : 'Mode control not supported here'}</small></div>
-      <div class="seg">${['ambient','transient','playback'].map((v, i) => `<button data-act="opt-audio" data-v="${v}" class="${opts.audio === v ? 'on' : ''}">${['Mix','Duck','Loud'][i]}</button>`).join('')}</div></div>
+    <div class="row"><div><label>With music</label><small>${navigator.audioSession ? AUDIO_HINT[opts.audio] + ` (iOS reports: ${esc(navigator.audioSession.type)})` : 'Mode control not supported here'}</small></div>
+      <div class="seg">${['ambient','transient','playback','play-and-record'].map((v, i) => `<button data-act="opt-audio" data-v="${v}" class="${opts.audio === v ? 'on' : ''}">${['Mix','Duck','Loud','Test'][i]}</button>`).join('')}</div></div>
   </div>
   <button class="btn full" data-act="test-sound" style="margin-top:10px">Test sounds</button>
   <div class="note">Start your music first, then test each mode to hear which works best.</div>
@@ -980,7 +981,7 @@ document.addEventListener('click', e => {
       bf.patName = ''; save(); toast(ex ? `Updated “${name}”` : `Saved “${name}”`); renderSheet(); break;
     }
     case 'opt-half': opts.halfway = !opts.halfway; saveOpts(); renderSettings(); break;
-    case 'opt-audio': opts.audio = b.dataset.v; saveOpts(); applyAudioSession(); renderSettings(); break;
+    case 'opt-audio': opts.audio = b.dataset.v; saveOpts(); try { if (ac) { ac.close(); } } catch (e) {} ac = null; master = null; applyAudioSession(); renderSettings(); break;
     case 'test-sound':
       unlockAudio(); SFX.count(); setTimeout(SFX.count, 1000); setTimeout(SFX.count, 2000);
       setTimeout(SFX.work, 3000); setTimeout(SFX.half, 4600); setTimeout(SFX.rest, 5600); setTimeout(SFX.move, 7000); setTimeout(SFX.finish, 8400);
