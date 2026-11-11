@@ -1,5 +1,5 @@
 // Bump CACHE when releasing so old caches are cleared.
-const CACHE = 'hiit-v1.2.1';
+const CACHE = 'hiit-v1.3.0';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
